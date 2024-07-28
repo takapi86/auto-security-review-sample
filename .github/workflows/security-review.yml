@@ -1,0 +1,47 @@
+name: Security Review
+
+on:
+  pull_request:
+
+jobs:
+  semgrep-security-review:
+    permissions:
+      contents: read
+      pull-requests: write
+    name: Run Security Review
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+
+      - name: Show CHANGED_FILES
+        run: |
+          echo "Changed PHP files:"
+          echo "${{ steps.changed-files.outputs.all_changed_files }}"
+
+      - name: Install reviewdog
+        uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: latest
+
+      - name: Run Semgrep
+        run: |
+          if [ -n "${{ steps.changed-files.outputs.all_changed_files }}" ]; then
+            semgrep --sarif --config=auto --config .semgrep/ --verbose ${{ steps.changed-files.outputs.all_changed_files }} > semgrep_output.sarif
+          else
+            echo "No files to analyze"
+            echo '{}' > semgrep_output.sarif
+          fi
+
+      - name: Run Reviewdog
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          reviewdog -reporter=github-pr-review -f=sarif < semgrep_output.sarif
